@@ -1,5 +1,11 @@
 {
   "name": "gather-github-json",
-  "main": "src/index.js",
-  "compatibility_date": "2026-07-02"
+  "main": "src/gather-github-json.js",
+  "compatibility_date": "2026-07-02",
+  "kv_namespaces": [
+    {
+      "binding": "WEBPAGE_KV",
+      "id": "webpage_kv"
+    }
+  ]
 }
