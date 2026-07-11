@@ -122,6 +122,7 @@ export default {
             const stringifiedData = JSON.stringify(githubData);
             ctx.waitUntil(
                 Promise.all([
+                    env.WEBPAGE_KV.put("html_render_fresh", "false"),
                     env.WEBPAGE_KV.put("github_json_commit", latestCommit),
                     env.WEBPAGE_KV.put("github_json", stringifiedData)
                 ]).catch(err => console.error("Failed set WEBPAGE_KV data from GitHub in waitUntil:", err.message))
