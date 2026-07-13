@@ -2,9 +2,9 @@
 entryTitle: {
     link: "",
     imgSrc: "",
-    imgDescription: "",
-    description: "",
-    tags: "",
+    imgDes: "",
+    description: "MD",
+    tags: [""],
 }
 */
 function githubTextToJSON(text){
@@ -71,14 +71,20 @@ export default {
         let kvCommit = -1;
         let lastError = "Unknown error occurred";
 
+
+        const githubHeaders = {"User-Agent": "Cloudflare-Worker-InfoDump-Parser"};
+        if (env.GITHUB_TOKEN) {
+            githubHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
+        }
+
         try{ // get latest commit of file from github
-            const githubHeaders = {"User-Agent": "Cloudflare-Worker-InfoDump-Parser"};
             const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?path=${path}&per_page=1`, {
                 headers: githubHeaders
             });
-            const responseJSON = await response.json();
+            if (!response.ok) throw new Error(`GitHub API Status: ${response.status}`);
 
-            if (responseJSON && responseJSON.length > 0) {
+            const responseJSON = await response.json();
+            if (responseJSON && Array.isArray(responseJSON) && responseJSON.length > 0) {
                 latestCommit = responseJSON[0].sha;
             }
         } catch (error) {
@@ -93,10 +99,11 @@ export default {
             console.error("Failed get commit from WEBPAGE_KV:", error.message);
         }
 
-        if (kvCommit !== -1){ // use stored json if commit versions allow
+        if (kvCommit !== -1 && kvCommit !== null){ // use stored json if commit versions allow
             if ((latestCommit === -1) || (latestCommit !== -1 && kvCommit === latestCommit)) {
                 try{
                     const kvJSON = await env.WEBPAGE_KV.get("github_json");
+                    if (!kvJSON) throw new Error("Failed: WEBPAGE_KV.get('github_json')");
                     return new Response(kvJSON, {
                         headers: { "Content-Type": "application/json" }
                     });
@@ -137,7 +144,7 @@ export default {
             const staleJSON = await env.WEBPAGE_KV.get("github_json");
             if (staleJSON) {
                 return new Response(staleJSON, {
-                    headers: { "Content-Type": "application/json", "X-Cache": "STALE-FALLBACK" }
+                    headers: { "Content-Type": "application/json" }
                 });
             }
         } catch (_) { }
