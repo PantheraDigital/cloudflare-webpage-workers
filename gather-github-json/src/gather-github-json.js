@@ -80,8 +80,9 @@ async function verifySignature(secret, header, textBody) {
     return await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, bodyBuffer);
 }
 
-async function fetchGitHubText(owner, path, errorMsg) {
-    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${path}`);
+async function fetchGitHubText(owner, path, errorMsg, githubToken) {
+    const headers = (githubToken) ? {"Authorization":`token ${githubToken}`} : {};
+    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${path}`, { headers });
     if (!res.ok) throw new Error(`${errorMsg}: ${res.status}`);
     return await res.text();
 }
@@ -113,7 +114,7 @@ export default {
                 
                 if (repoName === env.MD_REPO_NAME) {
                     try {
-                        const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
+                        const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed', env.GITHUB_TOKEN));
                         await env.WEBPAGE_KV.put("github_json", JSON.stringify(githubData));
                         await env.WEBPAGE_KV.put("html_render_fresh", "false");
                         return new Response("JSON updated. Cache invalidated.", { status: 200 });
@@ -124,7 +125,7 @@ export default {
 
                 if (repoName === env.HTML_REPO_NAME) {
                     try {
-                        const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed');
+                        const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed', env.GITHUB_TOKEN);
                         await env.WEBPAGE_KV.put("raw_layout_html", rawHtml);
                         await env.WEBPAGE_KV.put("html_render_fresh", "false");
                         return new Response("HTML Layout template updated. Cache invalidated.", { status: 200 });
