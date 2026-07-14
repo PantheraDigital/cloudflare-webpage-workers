@@ -135,26 +135,25 @@ export default {
             if (request.headers.get("X-GitHub-Event") === "push") {
                 const repoName = payload.repository.name;
                 
-                if (repoName === env.MD_REPO_NAME) {
-                    try {
-                        const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed', env.GITHUB_TOKEN));
-                        await env.WEBPAGE_KV.put("github_json", JSON.stringify(githubData));
-                        await env.WEBPAGE_KV.put("html_render_fresh", "false");
-                        return new Response("JSON updated. Cache invalidated.", { status: 200 });
-                    } catch (err) {
-                        return new Response(`MD compilation error: ${err.message}`, { status: 500 });
-                    }
-                }
+                if (repoName === env.MD_REPO_NAME || repoName === env.HTML_REPO_NAME) {
+                    ctx.waitUntil((async () => {
+                        try {
+                            if (repoName === env.MD_REPO_NAME) {
+                                const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed', env.GITHUB_TOKEN));
+                                await env.WEBPAGE_KV.put("github_json", JSON.stringify(githubData));
+                                await env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } });
+                            } else if (repoName === env.HTML_REPO_NAME) {
+                                const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed', env.GITHUB_TOKEN);
+                                await env.WEBPAGE_KV.put("raw_layout_html", rawHtml);
+                                await env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } });
+                            }
+                            console.log("Background compilation sync successful.");
+                        } catch (err) {
+                            console.error("Background sync failed:", err.message);
+                        }
+                    })());
 
-                if (repoName === env.HTML_REPO_NAME) {
-                    try {
-                        const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed', env.GITHUB_TOKEN);
-                        await env.WEBPAGE_KV.put("raw_layout_html", rawHtml);
-                        await env.WEBPAGE_KV.put("html_render_fresh", "false");
-                        return new Response("HTML Layout template updated. Cache invalidated.", { status: 200 });
-                    } catch (err) {
-                        return new Response(`HTML pull error: ${err.message}`, { status: 500 });
-                    }
+                    return new Response("Sync triggered in background", { status: 202 });
                 }
             }
 
