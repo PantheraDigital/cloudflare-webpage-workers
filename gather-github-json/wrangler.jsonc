@@ -2,6 +2,7 @@
   "name": "gather-github-json",
   "main": "src/gather-github-json.js",
   "compatibility_date": "2026-07-02",
+  "keep_vars": true,
   "kv_namespaces": [
     {
       "binding": "WEBPAGE_KV",
