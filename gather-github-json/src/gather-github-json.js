@@ -144,6 +144,7 @@ export default {
             }
 
             const target = url.searchParams.get("pull");
+            console.log(target);
             try {
                 if (target === "json") {
                     const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
