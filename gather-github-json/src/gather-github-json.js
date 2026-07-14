@@ -144,14 +144,15 @@ export default {
             }
 
             const target = url.searchParams.get("pull");
-            console.log(target);
             try {
                 if (target === "json") {
                     const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
                     const dataStr = JSON.stringify(githubData);
                     ctx.waitUntil(
-                        env.WEBPAGE_KV.put("github_json", dataStr),
-                        env.WEBPAGE_KV.put("html_render_fresh", "false")
+                        Promise.all([
+                            env.WEBPAGE_KV.put("github_json", dataStr),
+                            env.WEBPAGE_KV.put("html_render_fresh", "false")
+                        ])
                     );
                     return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
                 }
@@ -159,8 +160,10 @@ export default {
                 if (target === "html") {
                     const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed');
                     ctx.waitUntil(
-                        env.WEBPAGE_KV.put("raw_layout_html", rawHtml),
-                        env.WEBPAGE_KV.put("html_render_fresh", "false")
+                        Promise.all([
+                            env.WEBPAGE_KV.put("raw_layout_html", rawHtml),
+                            env.WEBPAGE_KV.put("html_render_fresh", "false")
+                        ])
                     );
                     return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
                 }
