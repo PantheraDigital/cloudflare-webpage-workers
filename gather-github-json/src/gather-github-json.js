@@ -80,23 +80,21 @@ async function verifySignature(secret, header, textBody) {
     return await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, bodyBuffer);
 }
 
-async function fetchFromGitHub(env) {
-    const owner = "PantheraDigital";
-    const repo = "InfoDump";
-    const branch = "main";
-    const path = "README.md";
-    
-    const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`);
-    if (!response.ok) throw new Error(`GitHub File retrieval failed Status: ${response.status}`);
-    const text = await response.text();
-    return githubTextToJSON(text);
+async function fetchGitHubText(owner, path, errorMsg) {
+    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${path}`);
+    if (!res.ok) throw new Error(`${errorMsg}: ${res.status}`);
+    return await res.text();
 }
 
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
 
-        if (request.method === "POST" && url.pathname === "/webhook") { 
+        if (request.method === "POST") { 
+            if (url.pathname !== "/webhook") {
+                return new Response("Not Found", { status: 404 });
+            }
+
             const signatureHeader = request.headers.get("X-Hub-Signature-256");
             const rawBody = await request.text();
 
@@ -111,41 +109,66 @@ export default {
             }
 
             if (request.headers.get("X-GitHub-Event") === "push") {
-                let readmeChanged = false;
-
-                if (payload.commits && Array.isArray(payload.commits)) {
-                    for (const commit of payload.commits) {
-                        const fileDiff = [...(commit.added || []), ...(commit.modified || [])];
-                        if (fileDiff.includes(env.PATH || "README.md")) {
-                            readmeChanged = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (readmeChanged) {
+                const repoName = payload.repository.name;
+                
+                if (repoName === env.MD_REPO_NAME) {
                     try {
-                        const githubData = await fetchFromGitHub(env);
-                        const stringifiedData = JSON.stringify(githubData);
-                        
-                        await env.WEBPAGE_KV.put("github_json", stringifiedData);
-                        await env.WEBPAGE_KV.put("html_render_fresh", "false"); 
-
-                        return new Response(JSON.stringify({ status: "KV Cached Updated via Webhook" }), {
-                            headers: { "Content-Type": "application/json" }
-                        });
+                        const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
+                        await env.WEBPAGE_KV.put("github_json", JSON.stringify(githubData));
+                        await env.WEBPAGE_KV.put("html_render_fresh", "false");
+                        return new Response("JSON updated. Cache invalidated.", { status: 200 });
                     } catch (err) {
-                        return new Response(`MD compilation failure: ${err.message}`, { status: 500 });
+                        return new Response(`MD compilation error: ${err.message}`, { status: 500 });
                     }
                 }
 
-                return new Response(JSON.stringify({ status: "No target file modifications detected" }), {
-                    headers: { "Content-Type": "application/json" }
-                });
+                if (repoName === env.HTML_REPO_NAME) {
+                    try {
+                        const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed');
+                        await env.WEBPAGE_KV.put("raw_layout_html", rawHtml);
+                        await env.WEBPAGE_KV.put("html_render_fresh", "false");
+                        return new Response("HTML Layout template updated. Cache invalidated.", { status: 200 });
+                    } catch (err) {
+                        return new Response(`HTML pull error: ${err.message}`, { status: 500 });
+                    }
+                }
+            }
+
+            return new Response("Event ignored", { status: 200 });
+        }
+
+        if (request.method === "GET") {
+            const clientApiKey = request.headers.get("X-API-Key");
+            if (!env.API_KEY || clientApiKey !== env.API_KEY) {
+                return new Response("Unauthorized: Invalid or Missing API Key", { status: 401 });
+            }
+
+            const target = url.searchParams.get("pull");
+            try {
+                if (target === "json") {
+                    const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
+                    const dataStr = JSON.stringify(githubData);
+                    ctx.waitUntil(
+                        env.WEBPAGE_KV.put("github_json", dataStr),
+                        env.WEBPAGE_KV.put("html_render_fresh", "false")
+                    );
+                    return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
+                }
+                
+                if (target === "html") {
+                    const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed');
+                    ctx.waitUntil(
+                        env.WEBPAGE_KV.put("raw_layout_html", rawHtml),
+                        env.WEBPAGE_KV.put("html_render_fresh", "false")
+                    );
+                    return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
+                }
+            } catch (err) {
+                return new Response(JSON.stringify({ error: err.message }), { status: 500 });
             }
         }
 
-        return new Response("Event ignored", { status: 200 });
+        return new Response("Not Found", { status: 404 });
     }
 };
 
