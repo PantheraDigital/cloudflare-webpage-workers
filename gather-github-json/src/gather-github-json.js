@@ -174,7 +174,7 @@ export default {
                     ctx.waitUntil(
                         Promise.all([
                             env.WEBPAGE_KV.put("github_json", dataStr),
-                            env.WEBPAGE_KV.put("html_render_fresh", "false")
+                            env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } })
                         ])
                     );
                     return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
@@ -185,7 +185,7 @@ export default {
                     ctx.waitUntil(
                         Promise.all([
                             env.WEBPAGE_KV.put("raw_layout_html", rawHtml),
-                            env.WEBPAGE_KV.put("html_render_fresh", "false")
+                            env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } })
                         ])
                     );
                     return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
