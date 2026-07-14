@@ -59,100 +59,93 @@ function githubTextToJSON(text){
     return result;
 }
 
+async function verifySignature(secret, header, textBody) {
+    if (!header) return false;
+    
+    const encoder = new TextEncoder();
+    const keyBuffer = encoder.encode(secret);
+    const bodyBuffer = encoder.encode(textBody);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+        "raw", 
+        keyBuffer, 
+        { name: "HMAC", hash: "SHA-256" }, 
+        false, 
+        ["verify"]
+    );
+    
+    const actualPart = header.startsWith("sha256=") ? header.slice(7) : header;
+    const sigBytes = new Uint8Array(actualPart.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    
+    return await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, bodyBuffer);
+}
+
+async function fetchFromGitHub(env) {
+    const owner = "PantheraDigital";
+    const repo = "InfoDump";
+    const branch = "main";
+    const path = "README.md";
+    
+    const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`);
+    if (!response.ok) throw new Error(`GitHub File retrieval failed Status: ${response.status}`);
+    const text = await response.text();
+    return githubTextToJSON(text);
+}
+
 export default {
     async fetch(request, env, ctx) {
+        const url = new URL(request.url);
 
-        const owner = "PantheraDigital";
-        const repo = "InfoDump";
-        const branch = "main";
-        const path = "README.md";
+        if (request.method === "POST" && url.pathname === "/webhook") { 
+            const signatureHeader = request.headers.get("X-Hub-Signature-256");
+            const rawBody = await request.text();
 
-        let latestCommit = -1;
-        let kvCommit = -1;
-        let lastError = "Unknown error occurred";
-
-
-        const githubHeaders = {"User-Agent": "Cloudflare-Worker-InfoDump-Parser"};
-        if (env.GITHUB_TOKEN) {
-            githubHeaders["Authorization"] = `Bearer ${env.GITHUB_TOKEN}`;
-        }
-
-        try{ // get latest commit of file from github
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?path=${path}&per_page=1`, {
-                headers: githubHeaders
-            });
-            if (!response.ok) throw new Error(`GitHub API Status: ${response.status}`);
-
-            const responseJSON = await response.json();
-            if (responseJSON && Array.isArray(responseJSON) && responseJSON.length > 0) {
-                latestCommit = responseJSON[0].sha;
+            if (!env.WEBHOOK_SECRET || !(await verifySignature(env.WEBHOOK_SECRET, signatureHeader, rawBody))) {
+                return new Response("Unauthorized Signature Check Failed", { status: 401 });
             }
-        } catch (error) {
-            lastError = error.message;
-            console.error("Failed get latest commit from GitHub:", error.message);
-        }
 
-        try{ // get last stored commit from KV
-            kvCommit = await env.WEBPAGE_KV.get("github_json_commit");
-        } catch(error) {
-            lastError = error.message;
-            console.error("Failed get commit from WEBPAGE_KV:", error.message);
-        }
+            const payload = JSON.parse(rawBody);
+            
+            if (request.headers.get("X-GitHub-Event") === "ping") {
+                return new Response("Accepted", { status: 202 });
+            }
 
-        if (kvCommit !== -1 && kvCommit !== null){ // use stored json if commit versions allow
-            if ((latestCommit === -1) || (latestCommit !== -1 && kvCommit === latestCommit)) {
-                try{
-                    const kvJSON = await env.WEBPAGE_KV.get("github_json");
-                    if (!kvJSON) throw new Error("Failed: WEBPAGE_KV.get('github_json')");
-                    return new Response(kvJSON, {
-                        headers: { "Content-Type": "application/json" }
-                    });
-                } catch (error) {
-                    lastError = error.message;
-                    console.error("Failed get json from WEBPAGE_KV:", error.message);
+            if (request.headers.get("X-GitHub-Event") === "push") {
+                let readmeChanged = false;
+
+                if (payload.commits && Array.isArray(payload.commits)) {
+                    for (const commit of payload.commits) {
+                        const fileDiff = [...(commit.added || []), ...(commit.modified || [])];
+                        if (fileDiff.includes(env.PATH || "README.md")) {
+                            readmeChanged = true;
+                            break;
+                        }
+                    }
                 }
-            }
-        }
 
-        let githubData = null;
-        try{ // get json data from github
-            const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`);
-            if (!response.ok) throw new Error(`GitHub HTTP Status: ${response.status}`);
-            const text = await response.text();
-            githubData = githubTextToJSON(text);
-        } catch (error) {
-            lastError = error.message;
-            console.error("Failed get data from GitHub:", error.message);
-        }
+                if (readmeChanged) {
+                    try {
+                        const githubData = await fetchFromGitHub(env);
+                        const stringifiedData = JSON.stringify(githubData);
+                        
+                        await env.WEBPAGE_KV.put("github_json", stringifiedData);
+                        await env.WEBPAGE_KV.put("html_render_fresh", "false"); 
 
-        if (githubData) {
-            const stringifiedData = JSON.stringify(githubData);
-            ctx.waitUntil(
-                Promise.all([
-                    env.WEBPAGE_KV.put("html_render_fresh", "false"),
-                    env.WEBPAGE_KV.put("github_json_commit", latestCommit),
-                    env.WEBPAGE_KV.put("github_json", stringifiedData)
-                ]).catch(err => console.error("Failed set WEBPAGE_KV data from GitHub in waitUntil:", err.message))
-            );
+                        return new Response(JSON.stringify({ status: "KV Cached Updated via Webhook" }), {
+                            headers: { "Content-Type": "application/json" }
+                        });
+                    } catch (err) {
+                        return new Response(`MD compilation failure: ${err.message}`, { status: 500 });
+                    }
+                }
 
-            return new Response(stringifiedData, {
-                headers: { "Content-Type": "application/json" }
-            });
-        }
-
-        try {
-            const staleJSON = await env.WEBPAGE_KV.get("github_json");
-            if (staleJSON) {
-                return new Response(staleJSON, {
+                return new Response(JSON.stringify({ status: "No target file modifications detected" }), {
                     headers: { "Content-Type": "application/json" }
                 });
             }
-        } catch (_) { }
+        }
 
-        return new Response(JSON.stringify({ error: lastError }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+        return new Response("Event ignored", { status: 200 });
     }
 };
 
