@@ -103,9 +103,9 @@ function hexToBytes(hex) {
     return bytes;
 }
 
-async function fetchGitHubRawText(owner, path, githubToken, errorMsg) {
+async function fetchGitHubRawText(owner, repo, path, githubToken, errorMsg) {
     const headers = (githubToken) ? {"Authorization":`token ${githubToken}`} : {};
-    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${path}`, { headers });
+    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/main/${path}`, { headers });
     if (!res.ok) throw new Error(`${errorMsg}: ${res.status}`);
     return await res.text();
 }
