@@ -105,12 +105,6 @@ function hexToBytes(hex) {
     return bytes;
 }
 
-async function fetchGitHubRawText(owner, repo, path, githubToken, errorMsg) {
-    const headers = (githubToken) ? {"Authorization":`token ${githubToken}`} : {};
-    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/main/${path}`, { headers });
-    if (!res.ok) throw new Error(`${errorMsg}: ${res.status}`);
-    return await res.text();
-}
 async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
     const headers = {
         "Accept": "application/vnd.github+json",
@@ -158,7 +152,7 @@ async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
 }
 
 // POST /webhook - Github Event use only, database update and render trigger
-// GET - internal use only, resource retrieval from github 
+// fetchGitHubRawData - internal use only, resource retrieval from github 
 export default class extends WorkerEntrypoint {
     async fetch(request) {
         const url = new URL(request.url);
@@ -240,31 +234,6 @@ export default class extends WorkerEntrypoint {
             }
 
             return new Response("Event ignored", { status: 200 });
-        }
-
-        if (request.method === "GET" && url.hostname === "internal") {
-            const clientApiKey = request.headers.get("X-API-Key");
-            if (!this.env.INTERNAL_API_KEY || clientApiKey !== this.env.INTERNAL_API_KEY) {
-                return new Response("Unauthorized: Invalid or Missing API Key", { status: 401 });
-            }
-
-            const target = url.searchParams.get("pull");
-            try {
-                if (target === "json") {
-                    const githubData = githubTextToJSON(await fetchGitHubRawText(
-                        this.env.REPO_OWNER, this.env.MD_REPO_NAME, this.env.MD_PATH, this.env.GITHUB_TOKEN, 'MD pull failed'));
-                    const dataStr = JSON.stringify(githubData);
-                    return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
-                }
-                
-                if (target === "html") {
-                    const rawHtml = await fetchGitHubRawText(
-                        this.env.REPO_OWNER, this.env.HTML_REPO_NAME, this.env.HTML_PATH, this.env.GITHUB_TOKEN, 'HTML pull failed');
-                    return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
-                }
-            } catch (err) {
-                return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-            }
         }
 
         return new Response("Not Found", { status: 404 });
