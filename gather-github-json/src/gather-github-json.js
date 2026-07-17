@@ -193,6 +193,7 @@ export default class extends WorkerEntrypoint {
                                         this.env.WEBPAGE_KV.put("json_commit", githubData.commit)
                                     ]);
 
+                                    console.log("Trigger render JSON");
                                     await this.env.WEB_PAGE_WORKER.fetch("https://internal/render", {
                                         method: "POST",
                                         headers: {
@@ -201,7 +202,8 @@ export default class extends WorkerEntrypoint {
                                         },
                                         body: githubText
                                     });
-                                }
+                                } else {console.log(`Skip JSON cache: github commit ${githubData.commit}, local commit ${currentCommit}`);}
+
                             } else if (repoName === this.env.HTML_REPO_NAME) {
                                 const currentCommit = await this.env.WEBPAGE_KV.get('raw_html_commit');
                                 const githubData = await fetchGitHubData(
@@ -213,6 +215,7 @@ export default class extends WorkerEntrypoint {
                                         this.env.WEBPAGE_KV.put("raw_html_commit", githubData.commit)
                                     ]);
                                     
+                                    console.log("Trigger render HTML");
                                     await this.env.WEB_PAGE_WORKER.fetch("https://internal/render", {
                                         method: "POST",
                                         headers: {
@@ -221,9 +224,9 @@ export default class extends WorkerEntrypoint {
                                         },
                                         body: githubData.text
                                     });
-                                }
+                                } else {console.log(`Skip HTML cache: github commit ${githubData.commit}, local commit ${currentCommit}`);}
                             }
-                            console.log("Background compilation sync successful.");
+                            console.log("Background compilation sync successful");
                         } catch (err) {
                             console.error("Background sync failed:", err.message);
                         }
@@ -240,7 +243,7 @@ export default class extends WorkerEntrypoint {
     }
 
     async fetchGitHubRawData(type) {
-        const headers = (this.env.GITHUB_TOKEN) ? {"Authorization":`token ${this.env.GITHUB_TOKEN}`} : {};
+        const headers = (this.env.GITHUB_TOKEN) ? {"Authorization":`Bearer ${this.env.GITHUB_TOKEN}`} : {};
         if (type === "json") {
             const res = await fetch(`https://raw.githubusercontent.com/${this.env.REPO_OWNER}/${this.env.MD_REPO_NAME}/refs/heads/main/${this.env.MD_PATH}`, { headers });
             if (!res.ok) throw new Error(`MD pull failed: ${res.status}`);
