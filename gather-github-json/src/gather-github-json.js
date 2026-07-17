@@ -160,7 +160,7 @@ async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
 // POST /webhook - Github Event use only, database update and render trigger
 // GET - internal use only, resource retrieval from github 
 export default class extends WorkerEntrypoint {
-    async fetch(request, env, ctx) {
+    async fetch(request) {
         const url = new URL(request.url);
 
         if (request.method === "POST") { 
@@ -171,7 +171,7 @@ export default class extends WorkerEntrypoint {
             const signatureHeader = request.headers.get("X-Hub-Signature-256");
             const rawBody = await request.text();
 
-            if (!env.WEBHOOK_SECRET || !(await verifySignature(env.WEBHOOK_SECRET, signatureHeader, rawBody))) {
+            if (!this.env.WEBHOOK_SECRET || !(await verifySignature(this.env.WEBHOOK_SECRET, signatureHeader, rawBody))) {
                 return new Response("Unauthorized Signature Check Failed", { status: 401 });
             }
 
@@ -183,46 +183,46 @@ export default class extends WorkerEntrypoint {
                 const payload = JSON.parse(rawBody);
                 const repoName = payload.repository.name;
                 
-                if (repoName === env.MD_REPO_NAME || repoName === env.HTML_REPO_NAME) {
-                    ctx.waitUntil((async () => {
+                if (repoName === this.env.MD_REPO_NAME || repoName === this.env.HTML_REPO_NAME) {
+                    this.ctx.waitUntil((async () => {
                         try {
-                            if (repoName === env.MD_REPO_NAME) {
-                                const currentCommit = await env.WEBPAGE_KV.get('json_commit');
+                            if (repoName === this.env.MD_REPO_NAME) {
+                                const currentCommit = await this.env.WEBPAGE_KV.get('json_commit');
                                 const githubData = await fetchGitHubData(
-                                    env.REPO_OWNER, env.MD_REPO_NAME, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed');
+                                    this.env.REPO_OWNER, this.env.MD_REPO_NAME, this.env.MD_PATH, this.env.GITHUB_TOKEN, 'MD pull failed');
                                 
                                 if (!currentCommit || githubData.commit !== currentCommit) {
                                     const githubText = JSON.stringify(githubTextToJSON(githubData.text));
                                     
                                     await Promise.all([
-                                        env.WEBPAGE_KV.put("json", githubText),
-                                        env.WEBPAGE_KV.put("json_commit", githubData.commit)
+                                        this.env.WEBPAGE_KV.put("json", githubText),
+                                        this.env.WEBPAGE_KV.put("json_commit", githubData.commit)
                                     ]);
 
-                                    await env.WEB_PAGE_WORKER.fetch("https://internal/render", {
+                                    await this.env.WEB_PAGE_WORKER.fetch("https://internal/render", {
                                         method: "POST",
                                         headers: {
-                                            "X-API-Key": env.INTERNAL_API_KEY || "",
+                                            "X-API-Key": this.env.INTERNAL_API_KEY || "",
                                             "Content-Type": "application/json"
                                         },
                                         body: githubText
                                     });
                                 }
-                            } else if (repoName === env.HTML_REPO_NAME) {
-                                const currentCommit = await env.WEBPAGE_KV.get('raw_html_commit');
+                            } else if (repoName === this.env.HTML_REPO_NAME) {
+                                const currentCommit = await this.env.WEBPAGE_KV.get('raw_html_commit');
                                 const githubData = await fetchGitHubData(
-                                    env.REPO_OWNER, env.HTML_REPO_NAME, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
+                                    this.env.REPO_OWNER, this.env.HTML_REPO_NAME, this.env.HTML_PATH, this.env.GITHUB_TOKEN, 'HTML pull failed');
                                 
                                 if (!currentCommit || githubData.commit !== currentCommit) {
                                     await Promise.all([
-                                        env.WEBPAGE_KV.put("raw_html", githubData.text),
-                                        env.WEBPAGE_KV.put("raw_html_commit", githubData.commit)
+                                        this.env.WEBPAGE_KV.put("raw_html", githubData.text),
+                                        this.env.WEBPAGE_KV.put("raw_html_commit", githubData.commit)
                                     ]);
                                     
-                                    await env.WEB_PAGE_WORKER.fetch("https://internal/render", {
+                                    await this.env.WEB_PAGE_WORKER.fetch("https://internal/render", {
                                         method: "POST",
                                         headers: {
-                                            "X-API-Key": env.INTERNAL_API_KEY || "",
+                                            "X-API-Key": this.env.INTERNAL_API_KEY || "",
                                             "Content-Type": "text/html"
                                         },
                                         body: githubData.text
@@ -244,7 +244,7 @@ export default class extends WorkerEntrypoint {
 
         if (request.method === "GET" && url.hostname === "internal") {
             const clientApiKey = request.headers.get("X-API-Key");
-            if (!env.INTERNAL_API_KEY || clientApiKey !== env.INTERNAL_API_KEY) {
+            if (!this.env.INTERNAL_API_KEY || clientApiKey !== this.env.INTERNAL_API_KEY) {
                 return new Response("Unauthorized: Invalid or Missing API Key", { status: 401 });
             }
 
@@ -252,14 +252,14 @@ export default class extends WorkerEntrypoint {
             try {
                 if (target === "json") {
                     const githubData = githubTextToJSON(await fetchGitHubRawText(
-                        env.REPO_OWNER, env.MD_REPO_NAME, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed'));
+                        this.env.REPO_OWNER, this.env.MD_REPO_NAME, this.env.MD_PATH, this.env.GITHUB_TOKEN, 'MD pull failed'));
                     const dataStr = JSON.stringify(githubData);
                     return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
                 }
                 
                 if (target === "html") {
                     const rawHtml = await fetchGitHubRawText(
-                        env.REPO_OWNER, env.HTML_REPO_NAME, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
+                        this.env.REPO_OWNER, this.env.HTML_REPO_NAME, this.env.HTML_PATH, this.env.GITHUB_TOKEN, 'HTML pull failed');
                     return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
                 }
             } catch (err) {
