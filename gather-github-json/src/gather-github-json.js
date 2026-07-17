@@ -59,8 +59,8 @@ function githubTextToJSON(text){
     return result;
 }
 
+// https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#javascript-example
 const encoder = new TextEncoder();
-
 async function verifySignature(secret, header, payload) {
     let parts = header.split("=");
     let sigHex = parts[1];
@@ -103,13 +103,63 @@ function hexToBytes(hex) {
     return bytes;
 }
 
-async function fetchGitHubText(owner, path, errorMsg, githubToken) {
+async function fetchGitHubRawText(owner, path, githubToken, errorMsg) {
     const headers = (githubToken) ? {"Authorization":`token ${githubToken}`} : {};
     const res = await fetch(`https://raw.githubusercontent.com/${owner}/${path}`, { headers });
     if (!res.ok) throw new Error(`${errorMsg}: ${res.status}`);
     return await res.text();
 }
+async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
+    const headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": `Bearer ${githubToken}`,
+        "User-Agent": "Cloudflare-Worker"
+    };
 
+    // https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository
+    const contentUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const commitUrl = `https://api.github.com/repos/${owner}/${repo}/commits?path=${path}&per_page=1`;
+
+    const [contentRes, commitRes] = await Promise.all([
+        fetch(contentUrl, { headers: headers }),
+        fetch(commitUrl, { headers: headers })
+    ]);
+
+    if (!contentRes.ok) {
+        throw new Error(`GitHub Content API Status: ${contentRes.status}`);
+    }
+    if (!commitRes.ok) {
+        throw new Error(`GitHub Commits API Status: ${commitRes.status}`);
+    }
+
+    const [contentJSON, commitJSON] = await Promise.all([
+        contentRes.json(),
+        commitRes.json()
+    ]);
+
+    const decodedText = decodeURIComponent(
+        atob(contentJSON.content.replace(/\s/g, ''))
+            .split('')
+            .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+    );
+
+    let latestCommitSha = null;
+    if (Array.isArray(commitJSON) && commitJSON.length > 0) {
+        latestCommitSha = commitJSON[0].sha;
+    }
+    console.log({
+        text: decodedText,
+        commit: latestCommitSha
+    });
+    return {
+        text: decodedText,
+        commit: latestCommitSha
+    };
+}
+
+// POST /webhook - Github Event use only, database update and render trigger
+// GET - internal use only, resource retrieval from github 
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
@@ -126,26 +176,59 @@ export default {
                 return new Response("Unauthorized Signature Check Failed", { status: 401 });
             }
 
-            const payload = JSON.parse(rawBody);
-            
             if (request.headers.get("X-GitHub-Event") === "ping") {
                 return new Response("Accepted", { status: 202 });
             }
 
             if (request.headers.get("X-GitHub-Event") === "push") {
+                const payload = JSON.parse(rawBody);
                 const repoName = payload.repository.name;
                 
                 if (repoName === env.MD_REPO_NAME || repoName === env.HTML_REPO_NAME) {
                     ctx.waitUntil((async () => {
                         try {
                             if (repoName === env.MD_REPO_NAME) {
-                                const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed', env.GITHUB_TOKEN));
-                                await env.WEBPAGE_KV.put("github_json", JSON.stringify(githubData));
-                                await env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } });
+                                const currentCommit = await env.WEBPAGE_KV.get('json_commit');
+                                const githubData = await fetchGitHubData(
+                                    env.REPO_OWNER, env.MD_REPO_NAME, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed');
+                                
+                                if (!currentCommit || githubData.commit !== currentCommit) {
+                                    const githubText = JSON.stringify(githubTextToJSON(githubData.text));
+                                    
+                                    await Promise.all([
+                                        env.WEBPAGE_KV.put("json", githubText),
+                                        env.WEBPAGE_KV.put("json_commit", githubData.commit)
+                                    ]);
+
+                                    await env.WEB_PAGE_WORKER.fetch("https://internal/render", {
+                                        method: "POST",
+                                        headers: {
+                                            "X-API-Key": env.INTERNAL_API_KEY || "",
+                                            "Content-Type": "application/json"
+                                        },
+                                        body: githubText
+                                    });
+                                }
                             } else if (repoName === env.HTML_REPO_NAME) {
-                                const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed', env.GITHUB_TOKEN);
-                                await env.WEBPAGE_KV.put("raw_layout_html", rawHtml);
-                                await env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } });
+                                const currentCommit = await env.WEBPAGE_KV.get('raw_html_commit');
+                                const githubData = await fetchGitHubData(
+                                    env.REPO_OWNER, env.HTML_REPO_NAME, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
+                                
+                                if (!currentCommit || githubData.commit !== currentCommit) {
+                                    await Promise.all([
+                                        env.WEBPAGE_KV.put("raw_html", githubData.text),
+                                        env.WEBPAGE_KV.put("raw_html_commit", githubData.commit)
+                                    ]);
+                                    
+                                    await env.WEB_PAGE_WORKER.fetch("https://internal/render", {
+                                        method: "POST",
+                                        headers: {
+                                            "X-API-Key": env.INTERNAL_API_KEY || "",
+                                            "Content-Type": "text/html"
+                                        },
+                                        body: githubData.text
+                                    });
+                                }
                             }
                             console.log("Background compilation sync successful.");
                         } catch (err) {
@@ -160,34 +243,24 @@ export default {
             return new Response("Event ignored", { status: 200 });
         }
 
-        if (request.method === "GET") {
+        if (request.method === "GET" && url.hostname === "internal") {
             const clientApiKey = request.headers.get("X-API-Key");
-            if (!env.API_KEY || clientApiKey !== env.API_KEY) {
+            if (!env.INTERNAL_API_KEY || clientApiKey !== env.INTERNAL_API_KEY) {
                 return new Response("Unauthorized: Invalid or Missing API Key", { status: 401 });
             }
 
             const target = url.searchParams.get("pull");
             try {
                 if (target === "json") {
-                    const githubData = githubTextToJSON(await fetchGitHubText(env.REPO_OWNER, env.MD_PATH, 'MD pull failed'));
+                    const githubData = githubTextToJSON(await fetchGitHubRawText(
+                        env.REPO_OWNER, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed'));
                     const dataStr = JSON.stringify(githubData);
-                    ctx.waitUntil(
-                        Promise.all([
-                            env.WEBPAGE_KV.put("github_json", dataStr),
-                            env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } })
-                        ])
-                    );
                     return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
                 }
                 
                 if (target === "html") {
-                    const rawHtml = await fetchGitHubText(env.REPO_OWNER, env.HTML_PATH, 'HTML pull failed');
-                    ctx.waitUntil(
-                        Promise.all([
-                            env.WEBPAGE_KV.put("raw_layout_html", rawHtml),
-                            env.WEBPAGE_KV.put("html_render", "", { metadata: { fresh: false } })
-                        ])
-                    );
+                    const rawHtml = await fetchGitHubRawText(
+                        env.REPO_OWNER, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
                     return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
                 }
             } catch (err) {

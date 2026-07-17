@@ -9,6 +9,12 @@
       "id": "9fd7e9f61bc94405892ecbb6903f89b8"
     }
   ],
+  "services": [
+    {
+      "binding": "WEB_PAGE_WORKER",
+      "service": "cloudflare-webpage"
+    }
+  ],
   "observability": {
     "enabled": false,
     "head_sampling_rate": 1,
