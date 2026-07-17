@@ -271,13 +271,13 @@ export default class extends WorkerEntrypoint {
     }
 
     async fetchGitHubRawData(type) {
-        const headers = (env.GITHUB_TOKEN) ? {"Authorization":`token ${env.GITHUB_TOKEN}`} : {};
+        const headers = (this.env.GITHUB_TOKEN) ? {"Authorization":`token ${this.env.GITHUB_TOKEN}`} : {};
         if (type === "json") {
-            const res = await fetch(`https://raw.githubusercontent.com/${env.REPO_OWNER}/${env.MD_REPO_NAME}/refs/heads/main/${env.MD_PATH}`, { headers });
+            const res = await fetch(`https://raw.githubusercontent.com/${this.env.REPO_OWNER}/${this.env.MD_REPO_NAME}/refs/heads/main/${this.env.MD_PATH}`, { headers });
             if (!res.ok) throw new Error(`MD pull failed: ${res.status}`);
             return JSON.stringify(githubTextToJSON(await res.text()));
         } else if (type === "html") {
-            const res = await fetch(`https://raw.githubusercontent.com/${env.REPO_OWNER}/${env.HTML_REPO_NAME}/refs/heads/main/${env.HTML_PATH}`, { headers });
+            const res = await fetch(`https://raw.githubusercontent.com/${this.env.REPO_OWNER}/${this.env.HTML_REPO_NAME}/refs/heads/main/${this.env.HTML_PATH}`, { headers });
             if (!res.ok) throw new Error(`HTML pull failed: ${res.status}`);
             return res.text();
         }
