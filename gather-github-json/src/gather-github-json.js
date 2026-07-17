@@ -1,3 +1,5 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
+
 /*
 entryTitle: {
     link: "",
@@ -148,10 +150,7 @@ async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
     if (Array.isArray(commitJSON) && commitJSON.length > 0) {
         latestCommitSha = commitJSON[0].sha;
     }
-    console.log({
-        text: decodedText,
-        commit: latestCommitSha
-    });
+    
     return {
         text: decodedText,
         commit: latestCommitSha
@@ -160,7 +159,7 @@ async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
 
 // POST /webhook - Github Event use only, database update and render trigger
 // GET - internal use only, resource retrieval from github 
-export default {
+export default class extends WorkerEntrypoint {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
 
@@ -253,14 +252,14 @@ export default {
             try {
                 if (target === "json") {
                     const githubData = githubTextToJSON(await fetchGitHubRawText(
-                        env.REPO_OWNER, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed'));
+                        env.REPO_OWNER, env.MD_REPO_NAME, env.MD_PATH, env.GITHUB_TOKEN, 'MD pull failed'));
                     const dataStr = JSON.stringify(githubData);
                     return new Response(dataStr, { headers: { "Content-Type": "application/json" } });
                 }
                 
                 if (target === "html") {
                     const rawHtml = await fetchGitHubRawText(
-                        env.REPO_OWNER, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
+                        env.REPO_OWNER, env.HTML_REPO_NAME, env.HTML_PATH, env.GITHUB_TOKEN, 'HTML pull failed');
                     return new Response(rawHtml, { headers: { "Content-Type": "text/html" } });
                 }
             } catch (err) {
@@ -269,5 +268,19 @@ export default {
         }
 
         return new Response("Not Found", { status: 404 });
+    }
+
+    fetchGitHubRawData(type) {
+        const headers = (env.GITHUB_TOKEN) ? {"Authorization":`token ${env.GITHUB_TOKEN}`} : {};
+        if (type === "json") {
+            const res = await fetch(`https://raw.githubusercontent.com/${env.REPO_OWNER}/${env.MD_REPO_NAME}/refs/heads/main/${env.MD_PATH}`, { headers });
+            if (!res.ok) throw new Error(`MD pull failed: ${res.status}`);
+            return JSON.stringify(githubTextToJSON(await res.text()));
+        } else if (type === "html") {
+            const res = await fetch(`https://raw.githubusercontent.com/${env.REPO_OWNER}/${env.HTML_REPO_NAME}/refs/heads/main/${env.HTML_PATH}`, { headers });
+            if (!res.ok) throw new Error(`HTML pull failed: ${res.status}`);
+            return res.text();
+        }
+        return null;
     }
 };
