@@ -270,7 +270,7 @@ export default class extends WorkerEntrypoint {
         return new Response("Not Found", { status: 404 });
     }
 
-    fetchGitHubRawData(type) {
+    async fetchGitHubRawData(type) {
         const headers = (env.GITHUB_TOKEN) ? {"Authorization":`token ${env.GITHUB_TOKEN}`} : {};
         if (type === "json") {
             const res = await fetch(`https://raw.githubusercontent.com/${env.REPO_OWNER}/${env.MD_REPO_NAME}/refs/heads/main/${env.MD_PATH}`, { headers });
