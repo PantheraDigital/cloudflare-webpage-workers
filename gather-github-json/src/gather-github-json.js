@@ -76,7 +76,8 @@ function parsePostText(text){
                 sectionArray[entryIndex].imgDes = line.substring(2, line.indexOf("]"));
                 sectionArray[entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
             } else if (line.startsWith("[tags:")){ // tags
-                const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
+                let tags = line.substring(6, line.indexOf("]")).split(",");
+                tags = tags.map(s => s.trim());
                 sectionArray[entryIndex].tags = tags;
             } else {
                 const entry = sectionArray[entryIndex];
@@ -93,7 +94,8 @@ function parsePostText(text){
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("[tags:")){ // tags
-                const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
+                let tags = line.substring(6, line.indexOf("]")).split(",");
+                tags = tags.map(s => s.trim());
                 sectionArray[entryIndex].tags = tags;
             } else if (line === "<hr>"){ // switch to body
                 sectionArray[entryIndex].body = "";
