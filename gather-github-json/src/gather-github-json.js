@@ -72,10 +72,9 @@ function parsePostText(text){
                 tags = tags.map(s => s.trim());
                 result[section][entryIndex].tags = tags;
             } else {
-                if (result[section][entryIndex].description){
-                    result[section][entryIndex] += "\n" + line;
-                } else {
-                    result[section][entryIndex] = line;
+                const entry = result[section][entryIndex];
+                if (Object.hasOwn(entry, "description")){
+                    entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
                 }
             }
         } else if (section === "Posts"){
