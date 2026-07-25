@@ -1,14 +1,107 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-/*
-entryTitle: {
-    link: "",
-    imgSrc: "",
-    imgDes: "",
-    description: "MD",
-    tags: [""],
+/* Return Object
+{
+    Projects: [
+    {
+        title: "",
+        link: "",
+        imgSrc: "",
+        imgDes: "",
+        description: "MD",
+        tags: [""],
+    }
+    ],
+    Posts: [
+    {
+        title: "",
+        intro: "MD",
+        body: "MD",
+        tags: [""],
+    }
+    ]
 }
 */
+/* Text File
+    # Projects
+
+    ## [Project Title](project link)
+    ![img alt text](img link)
+    project description
+    [tags: tag1, tag2]
+
+    # Posts
+
+    ## Post Title
+    intro
+    <hr>
+    body
+    [tags: tag1, tag2]
+*/
+function parsePostText(text){
+    const result = {};
+    let section = "";
+    let entryIndex = -1;
+
+    text.split("\n").forEach(line => {
+        line = line.trim(); 
+        if (line.startsWith("# ")){ // section
+            section = line.substring(2);
+            result[section] = [];
+            entryIndex = -1;
+            continue;
+        }
+
+        if (section === "Projects"){
+            if (line.startsWith("## ")) { // title
+                line = line.substring(3);
+                if (line.startsWith("[")){ // title is link
+                    result[section].push({
+                        title: line.substring(1, line.indexOf("]")),
+                        link: line.substring(line.indexOf("(") + 1, line.length - 1)
+                    });
+                } else {
+                    result[section].push({title: line});
+                }
+                entryIndex++;
+            } else if (line.startsWith("!")){ // img
+                result[section][entryIndex].imgDes = line.substring(2, line.indexOf("]"));
+                result[section][entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
+            } else if (line.startsWith("[tags:")){ // tags
+                let tags = line.substring(6, line.indexOf("]")).split(",");
+                tags = tags.map(s => s.trim());
+                result[section][entryIndex].tags = tags;
+            } else {
+                if (result[section][entryIndex].description){
+                    result[section][entryIndex] += "\n" + line;
+                } else {
+                    result[section][entryIndex] = line;
+                }
+            }
+        } else if (section === "Posts"){
+            if (line.startsWith("## ")) { // title
+                line = line.substring(3);
+                result[section].push({title: line});
+                entryIndex++;
+            } else if (line.startsWith("[tags:")){ // tags
+                let tags = line.substring(6, line.indexOf("]")).split(",");
+                tags = tags.map(s => s.trim());
+                result[section][entryIndex].tags = tags;
+            } else if (line === "<hr>"){
+                entry.body = "";
+            } else {
+                const entry = result[section][entryIndex];
+                if (Object.hasOwn(entry, "body")){
+                    entry.body = (entry.body) ? `${entry.body}\n${line}` : line;
+                } else {
+                    entry.intro = (entry.intro) ? `${entry.intro}\n${line}` : line;
+                }
+            }
+        }
+        
+    });
+    return result;
+}
 function githubTextToJSON(text){
     const result = {};
     let section = "";
@@ -32,8 +125,7 @@ function githubTextToJSON(text){
                 entry = line;
                 if (section) result[section][entry] = {};
             }
-        } 
-        else if (line.startsWith("#")) { // title of new section
+        } else if (line.startsWith("#")) { // title of new section
             section = line.substring(1).trim();
             result[section] = {};
             entry = "";
@@ -156,6 +248,60 @@ async function fetchGitHubData(owner, repo, path, githubToken, errorMsg) {
 export default class extends WorkerEntrypoint {
     async fetch(request) {
         const url = new URL(request.url);
+
+        if (request.method === "GET") {
+            if (url.pathname === "/test") {
+                try {
+                    const testStr = 
+`# Projects
+
+## [Project Title](project link)
+![img alt text](img link)
+project description
+[tags: tag1, tag2]
+
+## [EntityController2D](https://www.fab.com/listings/51702f7a-38f1-4718-938a-6c02227dae01)
+![Screenshot of a video game character jumping between different green platforms.](https://raw.githubusercontent.com/PantheraDigital/InfoDump/refs/heads/main/project-imgs/PantheraDigital_EntityController.webp)
+
+This was my first real attempt at a character controller, documentation, and a product for others. It's a pack that includes a state machine based character script, input handling, input remapping, and 2d physics handling for walking across various sloped grounds.
+
+Originally this was just for me so that I could make some games, but I found it useful and believed it could help others, so I released it. I also updated it as I went on to make a few games using it.
+
+You can also see the documentation webpage I made for it here: [https://pantheradigital.github.io/EntityControllerByPanthera/](https://pantheradigital.github.io/EntityControllerByPanthera/)
+
+And a demo playable in browser here: [https://pantheradigital.itch.io/entity-controller-demo](https://pantheradigital.itch.io/entity-controller-demo)
+
+[tags: Unity, Game, Tool]
+
+# Posts
+
+## Post Title
+intro
+<hr>
+body
+[tags: tag1, tag2]
+
+## Post Title 2
+
+intro
+
+intro line 2
+
+<hr>
+
+body
+
+body line 2
+
+[tags: tag1, tag2]`;
+
+                    const result = parsePostText(testStr);
+                    return new Response(JSON.stringify(result), {headers: { "Content-Type": "application/json" }});
+                } catch (error) {
+                    return new Response(`Test failure: ${error.message}`);
+                }
+            }
+        }
 
         if (request.method === "POST") { 
             if (url.pathname !== "/webhook") {
