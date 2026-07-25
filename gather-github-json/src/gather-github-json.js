@@ -45,6 +45,7 @@ function parsePostText(text){
     let section = "";
     let sectionArray = null;
     let entryIndex = -1;
+    let validEntry = false;
 
     text.split("\n").forEach(line => {
         line = line.trim(); 
@@ -70,7 +71,8 @@ function parsePostText(text){
                     sectionArray.push({title: line, description:"", tags:[]});
                 }
                 entryIndex++;
-            } else if (entryIndex === -1) {
+                validEntry = true;
+            } else if (entryIndex === -1 || !validEntry) {
                 return;
             } else if (line.startsWith("!")){ // img
                 entry.imgDes = line.substring(2, line.indexOf("]"));
@@ -81,7 +83,8 @@ function parsePostText(text){
                 entry.tags = tags;
                 // finalize entry
                 entry.description = entry.description.trim();
-            } else { //  description
+                validEntry = false;
+            } else { // description
                 entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
             }
         } else if (section === "Posts"){
@@ -89,7 +92,8 @@ function parsePostText(text){
                 line = line.substring(3);
                 sectionArray.push({title: line, intro:"", tags:[]});
                 entryIndex++;
-            } else if (entryIndex === -1) {
+                validEntry = true;
+            } else if (entryIndex === -1 || !validEntry) {
                 return;
             } else if (line.startsWith("[tags:")){ // tags
                 let tags = line.substring(6, line.indexOf("]")).split(",");
@@ -98,6 +102,7 @@ function parsePostText(text){
                 // finalize entry
                 if (Object.hasOwn(entry, "body")) { entry.body = entry.body.trim(); }
                 entry.intro = entry.intro.trim();
+                validEntry = false;
             } else if (line === "<hr>"){ // switch to body
                 entry.body = "";
             } else { // intro or body
