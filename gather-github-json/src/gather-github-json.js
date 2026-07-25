@@ -49,7 +49,7 @@ function parsePostText(text){
             section = line.substring(2);
             result[section] = [];
             entryIndex = -1;
-            continue;
+            return;
         }
 
         if (section === "Projects"){
