@@ -41,6 +41,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 function parsePostText(text){
     const result = {};
     let section = "";
+    let sectionArray = null;
     let entryIndex = -1;
 
     text.split("\n").forEach(line => {
@@ -48,53 +49,57 @@ function parsePostText(text){
         if (line.startsWith("# ")){ // section
             section = line.substring(2);
             result[section] = [];
+            sectionArray = result[section];
             entryIndex = -1;
             return;
         }
 
         if (section === "Projects"){
             if (line.startsWith("## ")) { // title
+                if (entryIndex !== -1){
+                    sectionArray[entryIndex].description = sectionArray[entryIndex].description.trim();
+                }
                 line = line.substring(3);
                 if (line.startsWith("[")){ // title is link
-                    result[section].push({
+                    sectionArray.push({
                         title: line.substring(1, line.indexOf("]")),
                         link: line.substring(line.indexOf("(") + 1, line.length - 1)
                     });
                 } else {
-                    result[section].push({title: line, description:"", tags:[]});
+                    sectionArray.push({title: line, description:"", tags:[]});
                 }
                 entryIndex++;
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("!")){ // img
-                result[section][entryIndex].imgDes = line.substring(2, line.indexOf("]"));
-                result[section][entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
+                sectionArray[entryIndex].imgDes = line.substring(2, line.indexOf("]"));
+                sectionArray[entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
             } else if (line.startsWith("[tags:")){ // tags
-                const entry = result[section][entryIndex];
+                const entry = sectionArray[entryIndex];
                 const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
                 entry.tags = tags;
-                entryIndex = -1;
-                entry.description = entry.description.trim();
             } else {
-                const entry = result[section][entryIndex];
+                const entry = sectionArray[entryIndex];
                 entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
             }
         } else if (section === "Posts"){
             if (line.startsWith("## ")) { // title
+                if (entryIndex !== -1){
+                    sectionArray[entryIndex].description = sectionArray[entryIndex].description.trim();
+                }
                 line = line.substring(3);
-                result[section].push({title: line, intro:"", tags:[]});
+                sectionArray.push({title: line, intro:"", tags:[]});
                 entryIndex++;
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("[tags:")){ // tags
-                const entry = result[section][entryIndex];
+                const entry = sectionArray[entryIndex];
                 const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
                 entry.tags = tags;
-                entryIndex = -1;
             } else if (line === "<hr>"){ // switch to body
-                result[section][entryIndex].body = "";
+                sectionArray[entryIndex].body = "";
             } else {
-                const entry = result[section][entryIndex];
+                const entry = sectionArray[entryIndex];
                 if (Object.hasOwn(entry, "body")){
                     entry.body = (entry.body) ? `${entry.body}\n${line}` : line;
                 } else {
