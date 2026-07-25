@@ -38,7 +38,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
     body
     [tags: tag1, tag2]
 */
-function parsePostText(text){
+function parseContentText(text){
     if (!text) return {};
 
     const result = {};
@@ -114,56 +114,6 @@ function parsePostText(text){
             }
         }
         
-    });
-    return result;
-}
-function githubTextToJSON(text){
-    const result = {};
-    let section = "";
-    let entry = "";
-
-    // parse text to JSON
-    text.split("\n").forEach(line => {
-        if (line.trim() === ""){ // empty line
-            if (entry !== "" && result[section] && result[section][entry] && result[section][entry].description){
-                result[section][entry].description += "\n";
-            }
-        } else if (line.startsWith("##")){ // title of new entry
-            line = line.substring(2).trim();
-            if (line.startsWith("[")){ // title is link
-                entry = line.substring(1, line.indexOf("]"));
-                if (section) {
-                    result[section][entry] = {};
-                    result[section][entry].link = line.substring(line.indexOf("(") + 1, line.length - 1);
-                }
-            } else {
-                entry = line;
-                if (section) result[section][entry] = {};
-            }
-        } else if (line.startsWith("#")) { // title of new section
-            section = line.substring(1).trim();
-            result[section] = {};
-            entry = "";
-        } else if (line.startsWith("!")) { // img
-            if (section && entry && result[section][entry]) {
-                result[section][entry].imgDes = line.substring(2, line.indexOf("]"));
-                result[section][entry].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
-            }
-        } else if (line.startsWith("[tags:")){ // tags
-            let tags = line.substring(6, line.indexOf("]")).split(",");
-            tags = tags.map(s => s.trim());
-            if (section && entry && result[section][entry]) {
-                result[section][entry].tags = tags;
-            }
-        } else { // description
-            if (section && entry && result[section][entry]) {
-                if (result[section][entry].description){
-                    result[section][entry].description += "\n" + line;
-                } else {
-                    result[section][entry].description = line;
-                }
-            }
-        }
     });
     return result;
 }
@@ -264,60 +214,6 @@ export default class extends WorkerEntrypoint {
     async fetch(request) {
         const url = new URL(request.url);
 
-        if (request.method === "GET") {
-            if (url.pathname === "/test") {
-                try {
-                    const testStr = 
-`# Projects
-
-## [Project Title](project link)
-![img alt text](img link)
-project description
-[tags: tag1, tag2]
-
-## [EntityController2D](https://www.fab.com/listings/51702f7a-38f1-4718-938a-6c02227dae01)
-![Screenshot of a video game character jumping between different green platforms.](https://raw.githubusercontent.com/PantheraDigital/InfoDump/refs/heads/main/project-imgs/PantheraDigital_EntityController.webp)
-
-This was my first real attempt at a character controller, documentation, and a product for others. It's a pack that includes a state machine based character script, input handling, input remapping, and 2d physics handling for walking across various sloped grounds.
-
-Originally this was just for me so that I could make some games, but I found it useful and believed it could help others, so I released it. I also updated it as I went on to make a few games using it.
-
-You can also see the documentation webpage I made for it here: [https://pantheradigital.github.io/EntityControllerByPanthera/](https://pantheradigital.github.io/EntityControllerByPanthera/)
-
-And a demo playable in browser here: [https://pantheradigital.itch.io/entity-controller-demo](https://pantheradigital.itch.io/entity-controller-demo)
-
-[tags: Unity, Game, Tool]
-
-# Posts
-
-## Post Title
-intro
-<hr>
-body
-[tags: tag1, tag2]
-
-## Post Title 2
-
-intro
-
-intro line 2
-
-<hr>
-
-body
-
-body line 2
-
-[tags: tag1, tag2]`;
-
-                    const result = parsePostText(testStr);
-                    return new Response(JSON.stringify(result), {headers: { "Content-Type": "application/json" }});
-                } catch (error) {
-                    return new Response(`Test failure: ${error.message}`);
-                }
-            }
-        }
-
         if (request.method === "POST") { 
             if (url.pathname !== "/webhook") {
                 return new Response("Not Found", { status: 404 });
@@ -347,7 +243,7 @@ body line 2
                                     this.env.REPO_OWNER, this.env.MD_REPO_NAME, this.env.MD_PATH, this.env.GITHUB_TOKEN, 'MD pull failed');
                                 
                                 if (!currentCommit || githubData.commit !== currentCommit) {
-                                    const githubText = JSON.stringify(githubTextToJSON(githubData.text));
+                                    const githubText = JSON.stringify(parseContentText(githubData.text));
                                     
                                     await Promise.all([
                                         this.env.WEBPAGE_KV.put("json", githubText),
@@ -408,7 +304,7 @@ body line 2
         if (type === "json") {
             const res = await fetch(`https://raw.githubusercontent.com/${this.env.REPO_OWNER}/${this.env.MD_REPO_NAME}/refs/heads/main/${this.env.MD_PATH}`, { headers });
             if (!res.ok) throw new Error(`MD pull failed: ${res.status}`);
-            return JSON.stringify(githubTextToJSON(await res.text()));
+            return JSON.stringify(parseContentText(await res.text()));
         } else if (type === "html") {
             const res = await fetch(`https://raw.githubusercontent.com/${this.env.REPO_OWNER}/${this.env.HTML_REPO_NAME}/refs/heads/main/${this.env.HTML_PATH}`, { headers });
             if (!res.ok) throw new Error(`HTML pull failed: ${res.status}`);
