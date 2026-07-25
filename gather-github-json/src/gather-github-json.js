@@ -61,7 +61,7 @@ function parsePostText(text){
                         link: line.substring(line.indexOf("(") + 1, line.length - 1)
                     });
                 } else {
-                    result[section].push({title: line});
+                    result[section].push({title: line, description:"", tags:[]});
                 }
                 entryIndex++;
             } else if (line.startsWith("!")){ // img
@@ -73,20 +73,18 @@ function parsePostText(text){
                 result[section][entryIndex].tags = tags;
             } else {
                 const entry = result[section][entryIndex];
-                if (Object.hasOwn(entry, "description")){
-                    entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
-                }
+                entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
             }
         } else if (section === "Posts"){
             if (line.startsWith("## ")) { // title
                 line = line.substring(3);
-                result[section].push({title: line});
+                result[section].push({title: line, intro:"", tags:[]});
                 entryIndex++;
             } else if (line.startsWith("[tags:")){ // tags
                 let tags = line.substring(6, line.indexOf("]")).split(",");
                 tags = tags.map(s => s.trim());
                 result[section][entryIndex].tags = tags;
-            } else if (line === "<hr>"){
+            } else if (line === "<hr>"){ // switch to body
                 entry.body = "";
             } else {
                 const entry = result[section][entryIndex];
