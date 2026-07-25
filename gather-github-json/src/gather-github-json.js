@@ -62,9 +62,11 @@ function parseContentText(text){
             if (line.startsWith("## ")) { // title
                 line = line.substring(3);
                 if (line.startsWith("[")){ // title is link
+                    const link = line.substring(line.indexOf("(") + 1, line.indexOf(")"));
+                    const title = line.replace(`](${link})`, "");
                     sectionArray.push({
-                        title: line.substring(1, line.indexOf("]")),
-                        link: line.substring(line.indexOf("(") + 1, line.length - 1),
+                        title: title.substring(1),
+                        link: link,
                         description:""
                     });
                 } else {
