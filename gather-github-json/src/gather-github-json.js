@@ -63,7 +63,8 @@ function parsePostText(text){
                 if (line.startsWith("[")){ // title is link
                     sectionArray.push({
                         title: line.substring(1, line.indexOf("]")),
-                        link: line.substring(line.indexOf("(") + 1, line.length - 1)
+                        link: line.substring(line.indexOf("(") + 1, line.length - 1),
+                        description:""
                     });
                 } else {
                     sectionArray.push({title: line, description:"", tags:[]});
@@ -75,9 +76,8 @@ function parsePostText(text){
                 sectionArray[entryIndex].imgDes = line.substring(2, line.indexOf("]"));
                 sectionArray[entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
             } else if (line.startsWith("[tags:")){ // tags
-                const entry = sectionArray[entryIndex];
                 const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
-                entry.tags = tags;
+                sectionArray[entryIndex].tags = tags;
             } else {
                 const entry = sectionArray[entryIndex];
                 entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
@@ -93,9 +93,8 @@ function parsePostText(text){
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("[tags:")){ // tags
-                const entry = sectionArray[entryIndex];
                 const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
-                entry.tags = tags;
+                sectionArray[entryIndex].tags = tags;
             } else if (line === "<hr>"){ // switch to body
                 sectionArray[entryIndex].body = "";
             } else {
