@@ -40,7 +40,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 */
 function parsePostText(text){
     if (!text) return {};
-    
+
     const result = {};
     let section = "";
     let sectionArray = null;
@@ -56,11 +56,9 @@ function parsePostText(text){
             return;
         }
 
+        const entry = (entryIndex !== -1) ? sectionArray[entryIndex] : null;
         if (section === "Projects"){
             if (line.startsWith("## ")) { // title
-                if (entryIndex !== -1){
-                    sectionArray[entryIndex].description = sectionArray[entryIndex].description.trim();
-                }
                 line = line.substring(3);
                 if (line.startsWith("[")){ // title is link
                     sectionArray.push({
@@ -75,22 +73,19 @@ function parsePostText(text){
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("!")){ // img
-                sectionArray[entryIndex].imgDes = line.substring(2, line.indexOf("]"));
-                sectionArray[entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
+                entry.imgDes = line.substring(2, line.indexOf("]"));
+                entry.imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
             } else if (line.startsWith("[tags:")){ // tags
                 let tags = line.substring(6, line.indexOf("]")).split(",");
                 tags = tags.map(s => s.trim());
-                sectionArray[entryIndex].tags = tags;
-            } else {
-                const entry = sectionArray[entryIndex];
+                entry.tags = tags;
+                // finalize entry
+                entry.description = entry.description.trim();
+            } else { //  description
                 entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
             }
         } else if (section === "Posts"){
             if (line.startsWith("## ")) { // title
-                if (entryIndex !== -1){
-                    if (Object.hasOwn(entry, "body")) { sectionArray[entryIndex].body = sectionArray[entryIndex].body.trim(); }
-                    sectionArray[entryIndex].intro = sectionArray[entryIndex].intro.trim();
-                }
                 line = line.substring(3);
                 sectionArray.push({title: line, intro:"", tags:[]});
                 entryIndex++;
@@ -99,11 +94,13 @@ function parsePostText(text){
             } else if (line.startsWith("[tags:")){ // tags
                 let tags = line.substring(6, line.indexOf("]")).split(",");
                 tags = tags.map(s => s.trim());
-                sectionArray[entryIndex].tags = tags;
+                entry.tags = tags;
+                // finalize entry
+                if (Object.hasOwn(entry, "body")) { entry.body = entry.body.trim(); }
+                entry.intro = entry.intro.trim();
             } else if (line === "<hr>"){ // switch to body
-                sectionArray[entryIndex].body = "";
-            } else {
-                const entry = sectionArray[entryIndex];
+                entry.body = "";
+            } else { // intro or body
                 if (Object.hasOwn(entry, "body")){
                     entry.body = (entry.body) ? `${entry.body}\n${line}` : line;
                 } else {
