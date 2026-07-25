@@ -82,6 +82,8 @@ function parsePostText(text){
                 line = line.substring(3);
                 result[section].push({title: line, intro:"", tags:[]});
                 entryIndex++;
+            } else if (entryIndex === -1) {
+                return;
             } else if (line.startsWith("[tags:")){ // tags
                 let tags = line.substring(6, line.indexOf("]")).split(",");
                 tags = tags.map(s => s.trim());
