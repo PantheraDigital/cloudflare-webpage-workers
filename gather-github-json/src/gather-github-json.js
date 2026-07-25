@@ -39,6 +39,8 @@ import { WorkerEntrypoint } from "cloudflare:workers";
     [tags: tag1, tag2]
 */
 function parsePostText(text){
+    if (!text) return {};
+    
     const result = {};
     let section = "";
     let sectionArray = null;
@@ -86,7 +88,8 @@ function parsePostText(text){
         } else if (section === "Posts"){
             if (line.startsWith("## ")) { // title
                 if (entryIndex !== -1){
-                    sectionArray[entryIndex].description = sectionArray[entryIndex].description.trim();
+                    if (Object.hasOwn(entry, "body")) { sectionArray[entryIndex].body = sectionArray[entryIndex].body.trim(); }
+                    sectionArray[entryIndex].intro = sectionArray[entryIndex].intro.trim();
                 }
                 line = line.substring(3);
                 sectionArray.push({title: line, intro:"", tags:[]});
