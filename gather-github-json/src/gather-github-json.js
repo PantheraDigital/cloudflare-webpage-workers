@@ -89,7 +89,7 @@ function parsePostText(text){
                 tags = tags.map(s => s.trim());
                 result[section][entryIndex].tags = tags;
             } else if (line === "<hr>"){ // switch to body
-                entry.body = "";
+                result[section][entryIndex].body = "";
             } else {
                 const entry = result[section][entryIndex];
                 if (Object.hasOwn(entry, "body")){
