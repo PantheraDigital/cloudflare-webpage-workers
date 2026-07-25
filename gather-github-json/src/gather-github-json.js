@@ -70,9 +70,11 @@ function parsePostText(text){
                 result[section][entryIndex].imgDes = line.substring(2, line.indexOf("]"));
                 result[section][entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
             } else if (line.startsWith("[tags:")){ // tags
-                let tags = line.substring(6, line.indexOf("]")).split(",");
-                tags = tags.map(s => s.trim());
-                result[section][entryIndex].tags = tags;
+                const entry = result[section][entryIndex];
+                const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
+                entry.tags = tags;
+                entryIndex = -1;
+                entry.description = entry.description.trim();
             } else {
                 const entry = result[section][entryIndex];
                 entry.description = (entry.description) ? `${entry.description}\n${line}` : line;
@@ -85,9 +87,10 @@ function parsePostText(text){
             } else if (entryIndex === -1) {
                 return;
             } else if (line.startsWith("[tags:")){ // tags
-                let tags = line.substring(6, line.indexOf("]")).split(",");
-                tags = tags.map(s => s.trim());
-                result[section][entryIndex].tags = tags;
+                const entry = result[section][entryIndex];
+                const tags = line.substring(6, line.indexOf("]")).split(",").map(s => s.trim());
+                entry.tags = tags;
+                entryIndex = -1;
             } else if (line === "<hr>"){ // switch to body
                 result[section][entryIndex].body = "";
             } else {
