@@ -64,6 +64,8 @@ function parsePostText(text){
                     result[section].push({title: line, description:"", tags:[]});
                 }
                 entryIndex++;
+            } else if (entryIndex === -1) {
+                return;
             } else if (line.startsWith("!")){ // img
                 result[section][entryIndex].imgDes = line.substring(2, line.indexOf("]"));
                 result[section][entryIndex].imgSrc = line.substring(line.indexOf("(") + 1, line.length - 1);
