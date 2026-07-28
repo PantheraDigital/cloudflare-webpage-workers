@@ -48,7 +48,7 @@ function parseContentText(text){
     let validEntry = false;
 
     text.split("\n").forEach(line => {
-        line = line.trim(); 
+        line = line.trimEnd(); 
         if (line.startsWith("# ")){ // section
             section = line.substring(2);
             result[section] = [];
